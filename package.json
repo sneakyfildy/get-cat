@@ -8,7 +8,6 @@
     "babel-preset-env": "^1.7.0",
     "babel-preset-react": "^6.24.1",
     "css-loader": "^0.28.11",
-    "socket.io": "latest",
     "style-loader": "^0.21.0",
     "typescript": "^3.0.0",
     "webpack": "^4.8.3",
@@ -26,8 +25,7 @@
     "react": "^16.4.0",
     "react-dom": "^16.4.0",
     "request": "^2.88.0",
-    "request-promise": "^4.2.2",
-    "socket.io": "~1.4.5"
+    "request-promise": "^4.2.2"
   },
   "scripts": {
     "start": "webpack --mode development",
