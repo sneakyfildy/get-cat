@@ -1,34 +1,32 @@
 /* global require */
 (function (){
     const WEBHOOK_URL = require('./config')['WEBHOOK_URL'];
-    var rp = require('request-promise');
+    let express = require('express');
+    let rp = require('request-promise');
+    let pb = require('./modules/pikabu-utils');
+    let cheerio = require('cheerio');
+    let iconv = require('iconv-lite');
+    let http = require('http');
+    let https = require('https')
+
     var ServerReact = new ServerConstructor('react');
     ServerReact.init();
 
     function ServerConstructor (type){
-        var express, app, http, socket, exec, TS_FILEPATH_TEMPLATE, TS_FILEPATH_EXEC, me, TS_FILEPATH_TEMPLATE_REL;
-        me = this;
+        let app = express();
+        let server = http.Server(app);
 
-        express = require('express');
-        app = express();
-        http = require('http').Server(app);
-        socket = require('socket.io')(http);
-        exec = require('child_process').exec;
+        var me = this;
 
         this.type = type;
         this.port = 5667;
 
         this.init = function (){
             this.setupPaths();
-            socket.on('connection', function (socket){
-                console.log('a user connected');
-                socket.on('disconnect', function (){
-                    console.log('user disconnected');
-                });
-            });
-            http.listen(this.port, function (){
+            server.listen(this.port, function (){
                 console.log('Server started; port: ' + me.port);
             });
+            this.tryLoad();
             return this;
         };
 
@@ -49,28 +47,47 @@
         };
 
         this.handleAddRecordRequest = function (req, res){
-            console.log('add', WEBHOOK_URL)
+            console.log('send');
             var data = '';
             req
                 .on('data', function (chunk){
                     data += chunk;
                 })
-                .on('end', function (){
+                .on('end', () => {
                     res.end('ok');
-                    var options = {
-                        method: 'POST',
-                        uri: WEBHOOK_URL,
-                        body: {
-                            text: JSON.parse(data).data + '6143'
-                        },
-                        json: true
-                    };
+                    this.tryLoad(cb);
 
-                    rp(options)
-                        .then(function (parsedBody){
-                        })
-                        .catch(function (err){
-                        });
+                    function cb (title, link, imgSrc) {
+                        var msg = {
+                            "attachments": [
+                                {
+                                    "fallback": "Required plain-text summary of the attachment.",
+                                    "color": "#36a64f",
+                                    //"pretext": "",
+                                    "author_name": "Pikabu",
+                                    "author_link": "https://pikabu.ru",
+                                    "author_icon": "https://cs.pikabu.ru/apps/desktop/1.17.0/images/sprite_96dpi.png",
+                                    "title": title,
+                                    "title_link": link,
+                                    "image_url": imgSrc,
+                                    "ts": Date.now() / 1000
+                                }
+                            ]
+                        };
+
+                        var options = {
+                            method: 'POST',
+                            uri: WEBHOOK_URL,
+                            body: msg,
+                            json: true
+                        };
+
+                        rp(options)
+                            .then(function (parsedBody){
+                            })
+                            .catch(function (err){
+                            });
+                    }
                 });
         };
 
@@ -78,6 +95,30 @@
             res.end();
         };
 
+        this.tryLoad = function (cb){
+
+            https.get(`https://pikabu.ru/search?t=${encodeURI("Кот")}&d=${pb.getPbToday()}`,
+                function (res){
+                    var chunks = [];
+                    res.on('data', function (chunk){
+                        chunks.push(chunk);
+                    });
+                    res.on('end', function (){
+                        var decodedBody = iconv.decode(Buffer.concat(chunks), 'win1251');
+                        var $ = cheerio.load(decodedBody, {decodeEntities: false})
+                        let count = $('.stories-search__feed-panel > span').text();
+                        let $lastArticle = $('article.story').first();
+                        let lastArticleHeader = $lastArticle.find('.story__title').text();
+                        let storySrc = $lastArticle.find('.story-image__content a').attr('href');
+                        let imgSrc = $lastArticle.find('.story-image__content a img').attr('src');
+                        console.log(count, lastArticleHeader, storySrc, imgSrc);
+
+                        try {
+                            cb(lastArticleHeader, storySrc, imgSrc);
+                        } catch (err) {}
+                    });
+            });
+        }
 
         this.setupPaths = function (){
             app.set('view engine', 'jade');
